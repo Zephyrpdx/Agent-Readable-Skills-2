@@ -1,16 +1,9 @@
 # Project Design Document
 ## Agent-Readable Skills Infrastructure — Interactive Learning Curriculum
 
-**Deprecated:** This file has been replaced by `PROJECT_DESIGN_DOCUMENT_v1.2.md`.  
-**Version:** 1.1  
-**Status:** Deprecated — use `PROJECT_DESIGN_DOCUMENT_v1.2.md` instead.  
-**Last updated:** End of "Coaching System Review" conversation  
-
----
-
-## Deprecated Document Notice
-
-This document is deprecated and retained only for historical reference. Please use `PROJECT_DESIGN_DOCUMENT_v1.2.md` for the current project plan and implementation status.
+**Version:** 1.2  
+**Status:** Active development — Phases 1 through 5 complete. Current work: validation, polish, and documentation alignment.  
+**Last updated:** 2026-06-14
 
 ---
 
@@ -24,7 +17,7 @@ This document is the authoritative briefing file for all future conversations in
 
 This project builds a complete, interactive, AI-assessed learning curriculum for a non-developer adult learner. The subject is **Agent-Readable Skills Infrastructure** — the practice of writing `skill.markdown` files that replace brittle ad-hoc LLM prompts with deterministic, version-controlled behavioral contracts for enterprise AI systems.
 
-The curriculum has three levels and nine modules. All instructional content has been authored and exists in the project file `Agent_Skills_Curriculum.docx`. The engagement tracker, flashcard system, and Level 1 modules (1–3) are complete. The work remaining is encoding Level 2 (Modules 4–6) and Level 3 (Modules 7–9) into interactive lesson artifacts, then building the progress dashboard.
+The curriculum has three levels and nine modules. All instructional content has been authored and exists in the project file `Agent_Skills_Curriculum.docx`. The engagement tracker, flashcard system, all nine lesson modules, and the progress dashboard are implemented in the repository.
 
 The learning system is grounded in evidence-based principles drawn from the project's reference files: chunking, spaced repetition, retrieval practice, interleaving, deliberate practice, illusion-of-competence detection, focused vs. diffuse modes, and habit formation.
 
@@ -34,11 +27,21 @@ The learning system is grounded in evidence-based principles drawn from the proj
 
 | File | Purpose |
 |---|---|
+| `App.jsx` | Root application shell and main router for dashboard, lesson pages, and flashcards |
+| `Dashboard.jsx` | Phase 5 artifact — home screen showing modules, flashcard queue, and recommended next actions |
 | `module1-lesson.jsx` | Interactive lesson — Module 1 (complete, enhanced, canonical template) |
 | `module2-lesson.jsx` | Interactive lesson — Module 2 (complete) |
 | `module3-lesson.jsx` | Interactive lesson — Module 3 (complete) |
+| `module4-lesson.jsx` | Interactive lesson — Module 4 (complete) |
+| `module5-lesson.jsx` | Interactive lesson — Module 5 (complete) |
+| `module6-lesson.jsx` | Interactive lesson — Module 6 (complete) |
+| `module7-lesson.jsx` | Interactive lesson — Module 7 (complete) |
+| `module8-lesson.jsx` | Interactive lesson — Module 8 (complete) |
+| `module9-lesson.jsx` | Interactive lesson — Module 9 (complete) |
 | `engagement-tracker.jsx` | Phase 1 artifact — engagement tracking, scores, timestamps, session logs |
 | `flashcard-system.jsx` | Phase 2 artifact — adaptive flashcard review with Leitner box SRS |
+| `main.jsx` | Bootstrap, `window.storage` polyfill, and Anthropic API fetch interceptor |
+| `flashcard-content.json` | Structured flashcard inventory for all modules |
 | `Agent_Skills_Curriculum.docx` | Full authored curriculum content for all 9 modules — source of truth for lesson content |
 | `Agent_Readable_Skills_Curriculum.pdf` | Original source curriculum document |
 | `In-Section_Activity_Content_Specification.docx` | Activity content specification — used across all nine modules |
@@ -48,15 +51,7 @@ The learning system is grounded in evidence-based principles drawn from the proj
 | `Learning_How_to_Learn_-_Module_3_2.docx` | Learning science reference — memory techniques |
 | `Learning_How_to_Learn_-_Module_3_2_Answer_Key.docx` | Learning science reference — memory answer key |
 | `What_is_a_Chunk_Transcript.docx` | Learning science reference — chunking transcript |
-| `PROJECT_DESIGN_DOCUMENT.md` | This file |
-
-**Files to be created (not yet built):**
-
-| File | Phase | Purpose |
-|---|---|---|
-| `module4-lesson.jsx` through `module6-lesson.jsx` | Phase 4b | Interactive lessons for Modules 4–6 (Level 2) |
-| `module7-lesson.jsx` through `module9-lesson.jsx` | Phase 4c | Interactive lessons for Modules 7–9 (Level 3) |
-| `progress-dashboard.jsx` | Phase 5 | Home screen showing all modules, flashcard queue, recommended next action |
+| `PROJECT_DESIGN_DOCUMENT_v1.2.md` | This file |
 
 ---
 
@@ -72,16 +67,16 @@ The learning system is grounded in evidence-based principles drawn from the proj
 ### Level 2 — Intermediate
 | Module | Title | Status |
 |---|---|---|
-| 4 | Agentic Contracts | Not built |
-| 5 | Composability & Pipelines | Not built |
-| 6 | Debugging Failure Modes | Not built |
+| 4 | Agentic Contracts | ✅ Built |
+| 5 | Composability & Pipelines | ✅ Built |
+| 6 | Debugging Failure Modes | ✅ Built |
 
 ### Level 3 — Advanced
 | Module | Title | Status |
 |---|---|---|
-| 7 | Governance Tiers | Not built |
-| 8 | Quantitative Testing | Not built |
-| 9 | Enterprise Deployment | Not built |
+| 7 | Governance Tiers | ✅ Built |
+| 8 | Quantitative Testing | ✅ Built |
+| 9 | Enterprise Deployment | ✅ Built |
 
 ---
 
@@ -160,14 +155,13 @@ Every lesson module uses these components. Build them identically in each module
 
 ## Quiz Component Design Requirements
 
-**These three requirements are mandatory for all quiz components in all modules. They exist because a flaw in the pre-Phase-3 `module1-lesson.jsx` allowed correct answers to be identified without answering the question. Phase 3 corrects that artifact. All subsequent builds must comply from the start.**
+**These three requirements are mandatory for all quiz components in all modules. They exist because a flaw in the pre-Phase-3 `module1-lesson.jsx` allowed correct answers to be identified without answering the question. Phase 3 corrected that artifact. All subsequent builds must comply from the start.**
 
 ### 1. Randomized Answer Positions
 
 Correct answers must never occupy a predictable position. Store each question as an object with labeled options and a `correctIndex` field pointing to the correct answer, then shuffle the options array at render time before displaying.
 
 ```javascript
-// Data structure
 const question = {
   text: "Question text here",
   options: [
@@ -178,16 +172,9 @@ const question = {
   ],
 };
 
-// Shuffle before render — call once per question on component mount
 function shuffleOptions(options) {
   return [...options].sort(() => Math.random() - 0.5);
 }
-
-// In component — map over the questions array, shuffle each question's options once on mount
-const [shuffled] = useState(() => QUIZ_QUESTIONS.map(q => ({
-  ...q,
-  options: shuffleOptions(q.options)
-})));
 ```
 
 The correct answer must appear in positions A, B, C, and D with roughly equal frequency across a session. No hardcoded position is acceptable.
@@ -221,14 +208,11 @@ This requirement applies when quiz content appears in any static or printable fo
 The sidebar is collapsible. This pattern must be replicated in all lesson modules and the dashboard.
 
 ```jsx
-// State
 const [sidebarOpen, setSidebarOpen] = useState(true);
 
-// Shell — inline style drives grid columns
 <div className="lesson-shell" 
   style={{ gridTemplateColumns: sidebarOpen ? "260px 1fr" : "44px 1fr" }}>
 
-// Sidebar — collapsed class hides labels, centers dots
 <nav className={`lesson-sidebar ${sidebarOpen ? "" : "collapsed"}`}
   style={{ background: G.navyM, borderRight: `1px solid ${G.border}`, 
            overflowY: "auto", padding: "16px 0", transition: "width .25s ease" }}>
@@ -297,22 +281,22 @@ Every lesson module (module1 through module9) follows this identical structure. 
 
 ```
 SECTIONS array: [intro, content-1, content-2, content-3, content-4, recall, quiz, complete]
+```
 
 Each module contains:
-  - SectionIntro          — module overview, learning objectives, time estimate
-  - 4× Content Sections   — reading material with callouts, lists, code blocks, compare grids
-  - SectionRecall         — 3 open-ended questions, Claude-assessed
-  - SectionQuiz           — 3–5 multiple choice questions, Claude-explained
-  - SectionComplete       — weighted score, recommendation, spaced repetition reminder
+- SectionIntro          — module overview, learning objectives, time estimate
+- 4× Content Sections   — reading material with callouts, lists, code blocks, compare grids
+- SectionRecall         — 3 open-ended questions, Claude-assessed
+- SectionQuiz           — 3–5 multiple choice questions, Claude-explained
+- SectionComplete       — weighted score, recommendation, spaced repetition reminder
 
 Score weighting:
-  - Recall correct  = 2 points
-  - Recall partial  = 1 point
-  - Quiz correct    = 2 points
-  - Score ≥ 80%     → advance recommendation
-  - Score 55–79%    → review gaps before advancing
-  - Score < 55%     → re-read module
-```
+- Recall correct  = 2 points
+- Recall partial  = 1 point
+- Quiz correct    = 2 points
+- Score ≥ 80%     → advance recommendation
+- Score 55–79%    → review gaps before advancing
+- Score < 55%     → re-read module
 
 ---
 
@@ -327,11 +311,9 @@ Phases 1–5 use the artifact persistent storage API. This is available in Claud
 - Batch related data into single keys to minimize sequential storage calls
 
 ```javascript
-// Write
 await window.storage.set('engagement:module1:recall:r1', 
   JSON.stringify({ grade: 'partial', timestamp: Date.now() }));
 
-// Read
 try {
   const result = await window.storage.get('engagement:module1:recall:r1');
   const data = result ? JSON.parse(result.value) : null;
@@ -342,55 +324,7 @@ try {
 
 ---
 
-## Phase 3 Enhancements — Completed
-
-These features were added to `module1-lesson.jsx` in Phase 3 and are now part of the canonical module template. All subsequent module builds (4–9) must include them.
-
-1. **Pre-lesson prediction prompt** — Before content begins, asks: "Before reading, write one sentence about what you think causes AI prompts to fail at scale." Assessed by Claude, logged to engagement tracker.
-2. **Written summary assignment** — After the quiz, before the score screen: "In 3–5 sentences, summarize what a skill primitive is and why it matters." Claude-assessed, logged.
-3. **Pomodoro timer** — 25-minute countdown visible in header. At expiry: callout prompts a break before continuing.
-4. **Review mode** — If engagement log shows module previously completed, displays a "REVIEW" badge in header and hides prior answers so retrieval must happen fresh.
-5. **Engagement log writes** — On every recall submission and quiz answer, writes result + timestamp to the engagement tracker via `window.storage`.
-
----
-
-## Flashcard Inventory
-
-All flashcard content is sourced from `Agent_Skills_Curriculum.docx`. Each module's flashcard reference section defines the cards for that module.
-
-### Leitner Box Schedule
-| Box | Review frequency | Promoted from |
-|---|---|---|
-| Box 1 (New) | Every session | Initial state |
-| Box 2 | Every 2 days | Correct in Box 1 |
-| Box 3 | Every 4 days | Correct in Box 2 |
-| Box 4 | Every 7 days | Correct in Box 3 |
-| Box 5 | Every 14 days | Correct in Box 4 |
-
-A card demotes one box on an incorrect answer. Cards in Box 5 with a correct answer stay in Box 5.
-
-### Card ID Convention
-`fc-m[module]-[sequence]` — e.g., `fc-m1-01` through `fc-m1-10` for Module 1's 10 cards.
-
-### Level 1 Cards (Module 1) — 10 cards
-| ID | Term | Definition |
-|---|---|---|
-| fc-m1-01 | skill.markdown | A structured markdown file in a dedicated directory providing a deterministic, version-controlled behavioral contract for an LLM to execute. |
-| fc-m1-02 | Routing Description | The single-line frontmatter field an LLM gateway uses to match user intent to a skill. Must contain concrete trigger phrases and output shape. |
-| fc-m1-03 | Routing Failure | Occurs when the model fails to invoke a skill despite a matching query — typically caused by a vague or multi-line description. |
-| fc-m1-04 | Reasoning Framework | Declarative decision principles in the skill body that allow the model to generalize to unanticipated situations. |
-| fc-m1-05 | Deterministic Output Spec | An explicit schema defining exact output structure — columns, fields, row counts — that downstream agents parse reliably. |
-| fc-m1-06 | Edge Case Documentation | Explicit instructions for constraint failure states replacing the model's default hallucinated behavior with defined policy. |
-| fc-m1-07 | Pattern-Matching Exemplar | Static example output stored in the skill directory providing few-shot performance anchoring. |
-| fc-m1-08 | Contextual Economy | The discipline of keeping skill files under 150 lines to prevent context window overrun in production gateways. |
-| fc-m1-09 | 150-Line Constraint | Maximum recommended skill file length, enforced to maintain context efficiency and design discipline. |
-| fc-m1-10 | Brittle Prompt | A conversational, ad-hoc prompt lacking a deterministic contract — behaves inconsistently and cannot be reliably versioned or tested. |
-
-*(Cards for Modules 2–9 to be added as each module is built in Phase 4.)*
-
----
-
-## Five-Phase Implementation Plan
+## Phase Status Summary
 
 ### Phase 1 — Engagement Tracker ✅ Complete
 **Deliverable:** `engagement-tracker.jsx` — saved to project  
@@ -408,26 +342,22 @@ A card demotes one box on an incorrect answer. Cards in Box 5 with a correct ans
 **Deliverables:** `module2-lesson.jsx`, `module3-lesson.jsx` — saved to project  
 **Content source:** `Agent_Skills_Curriculum.docx` — Level 1 modules
 
-### Phase 4b — Modules 4, 5, and 6
-**Conversation scope:** Single focused conversation  
-**Deliverables:** `module4-lesson.jsx`, `module5-lesson.jsx`, `module6-lesson.jsx`  
+### Phase 4b — Modules 4, 5, and 6 ✅ Complete
+**Deliverables:** `module4-lesson.jsx`, `module5-lesson.jsx`, `module6-lesson.jsx` — saved to project  
 **Content source:** `Agent_Skills_Curriculum.docx` — Level 2 modules  
 **Opening prompt:**  
 *"I'm working on Phase 4b of the Agent-Readable Skills curriculum project. Please read the PROJECT_DESIGN_DOCUMENT.md and module1-lesson.jsx as the template. We are building Modules 4, 5, and 6 using content from Agent_Skills_Curriculum.docx."*
 
-### Phase 4c — Modules 7, 8, and 9
-**Conversation scope:** Single focused conversation  
-**Deliverables:** `module7-lesson.jsx`, `module8-lesson.jsx`, `module9-lesson.jsx`  
+### Phase 4c — Modules 7, 8, and 9 ✅ Complete
+**Deliverables:** `module7-lesson.jsx`, `module8-lesson.jsx`, `module9-lesson.jsx` — saved to project  
 **Content source:** `Agent_Skills_Curriculum.docx` — Level 3 modules  
 **Opening prompt:**  
 *"I'm working on Phase 4c of the Agent-Readable Skills curriculum project. Please read the PROJECT_DESIGN_DOCUMENT.md and module1-lesson.jsx as the template. We are building Modules 7, 8, and 9 using content from Agent_Skills_Curriculum.docx."*
 
-### Phase 5 — Progress Dashboard
-**Conversation scope:** Single focused conversation  
-**Deliverable:** `progress-dashboard.jsx` saved to project  
-**Features:** Module status cards with last-accessed date and best score; flashcard queue showing cards due today and overdue count; "Recommended Next Action" derived from engagement log; links to launch any module or flashcard review; Leitner box retention visualization  
-**Opening prompt:**  
-*"I'm working on Phase 5 of the Agent-Readable Skills curriculum project. Please read the PROJECT_DESIGN_DOCUMENT.md. All module files and the engagement-tracker.jsx and flashcard-system.jsx should be in the project. We are building the progress-dashboard.jsx that ties everything together."*
+### Phase 5 — Progress Dashboard ✅ Complete
+**Deliverable:** `Dashboard.jsx` — saved to project  
+**Behavior:** Module status cards with last-accessed date and best score; flashcard queue showing cards due today and overdue count; "Recommended Next Action" derived from engagement log; links to launch any module or flashcard review; Leitner box retention visualization  
+**Note:** The implemented progress dashboard lives in `Dashboard.jsx`; the legacy placeholder `progress-dashboard.jsx` is not used in the repository.
 
 ---
 
@@ -472,7 +402,7 @@ These were identified during the "Coaching System Review" conversation and shoul
 
 **The document drifts because updating it is the last thing on your mind when a phase finishes.** To prevent this, add the following as a closing step to every phase conversation before ending it:
 
-*"Update the PROJECT_DESIGN_DOCUMENT.md to reflect what was completed in this conversation: [brief description of what was built or decided]. Mark the relevant phases and modules as complete, add any new decisions to the Decisions Made section, and update the status line at the top."*
+*"Update the PROJECT_DESIGN_DOCUMENT.md to reflect what was completed in this conversation: [brief description of what was built or decided]. Mark the relevant phases and modules as complete, add any new decisions to the Decisions Made section, and update the status line at the top."
 
 This is a one-prompt ritual. It takes less than a minute and keeps every future conversation fully oriented.
 
