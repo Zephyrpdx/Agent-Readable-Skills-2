@@ -116,21 +116,48 @@ const storageSet = async (key, val) => {
   try { await window.storage.set(key, JSON.stringify(val)); } catch {}
 };
 
-async function assessWithClaude(systemPrompt, userMessage) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1000,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userMessage }],
-    }),
-  });
-  const data = await res.json();
-  const text = data.content?.filter(b => b.type === "text").map(b => b.text).join("") || "";
-  try { return JSON.parse(text.replace(/```json|```/g, "").trim()); }
-  catch { return { grade: "partial", label: "Feedback", message: text }; }
+// Change this in one place to use a cheaper model (e.g. "claude-sonnet-4-6").
+const ASSESS_MODEL = "claude-opus-4-8";
+
+async function assessWithClaude(systemPrompt, userMessage, maxTokens = 1024) {
+  let res;
+  try {
+    res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: ASSESS_MODEL,
+        max_tokens: maxTokens,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userMessage }]
+      })
+    });
+  } catch (e) {
+    return { error: true, message: `Network error reaching Claude (${e.message}). Check your connection and try again.` };
+  }
+
+  if (!res.ok) {
+    let detail = "";
+    try { const err = await res.json(); detail = err?.error?.message || JSON.stringify(err); } catch {}
+    let hint = "";
+    if (res.status === 401) hint = " Your API key looks invalid or expired — re-enter it via the ⚙ API Key button.";
+    else if (res.status === 429) hint = " You've hit a rate limit — wait a few seconds and try again.";
+    else if (res.status === 404) hint = ` The model "${ASSESS_MODEL}" was rejected — your key may not have access to it.`;
+    return { error: true, message: `Claude API error ${res.status}: ${detail}.${hint}` };
+  }
+
+  let data;
+  try { data = await res.json(); } catch { return { error: true, message: "Could not read Claude's response." }; }
+  const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
+  if (!text) return { error: true, message: "Claude returned an empty response. Please try again." };
+
+  try {
+    const clean = text.replace(/```json|```/g, "").trim();
+    return JSON.parse(clean);
+  } catch {
+    // Model didn't return valid JSON — surface the raw text so feedback isn't lost.
+    return { raw: true, message: text };
+  }
 }
 
 const PREDICTION_SYSTEM = `You are a learning coach for the Agent-Readable Skills Infrastructure curriculum.
@@ -142,14 +169,21 @@ Return ONLY a JSON object:
   "message": "2-3 sentences: note what shows good intuition, hint at what the lesson adds, encourage forward. Correct = understands multi-skill handoff requires output-to-input schema matching. Partial = vaguely related. Incorrect = off-base. Tone: warm, forward-looking."
 }`;
 
-const RECALL_SYSTEM = `You are an expert instructor assessing a student's recall answer for Module 5: "Composability & Pipelines" of the Agent-Readable Skills Infrastructure curriculum.
-The module covers: composability (output natively serves as next skill's input), the output-first design rule, placeholder fields for schema consistency, the Deterministic Script Rule, and silent pipeline failures.
-Return ONLY a JSON object:
+const RECALL_SYSTEM = `You are an expert instructor assessing a student's free-recall answer for Module 5: "Composability & Pipelines" of the Agent-Readable Skills Infrastructure curriculum. The module covers: composability (output natively serves as next skill's input), the output-first design rule, placeholder fields for schema consistency, the Deterministic Script Rule, and silent pipeline failures.
+
+You will be given the question, a RUBRIC describing the material that question tests (treat the rubric as the source of truth for what the teaching material covers), and the STUDENT ANSWER. Evaluate the answer strictly against the material described in the rubric — judging both accuracy and completeness.
+
+Return ONLY a JSON object (no markdown fences, no prose outside the JSON):
 {
   "grade": "correct" | "partial" | "incorrect",
   "label": "short 2-4 word verdict",
-  "message": "2-4 sentences: affirm what was right, correct or fill gaps, reinforce the key concept. Precise and direct."
-}`;
+  "accurate": ["each point the student stated that is correct and relevant; [] if none"],
+  "inaccurate": ["each point the student stated that is wrong or misleading, each phrased as 'what they said — why it's wrong'; [] if none"],
+  "missing": ["each key point the rubric/material covers that the student did NOT include; [] if none"],
+  "explanation": "2-4 sentences explaining the concepts that were missing or inaccurate, so the student understands the correct idea. Encouraging but precise; not sycophantic."
+}
+
+Grading: "correct" = captured the essential concept accurately and completely. "partial" = got part of it but missed or muddled something important. "incorrect" = fundamentally misunderstood, off-topic, or blank.`;
 
 const QUIZ_SYSTEM = `You are an expert instructor explaining a quiz answer for Module 5: Composability & Pipelines (Agent-Readable Skills Infrastructure curriculum).
 The student selected an answer that was {{CORRECT_OR_NOT}}.
@@ -163,6 +197,19 @@ Return ONLY a JSON object:
   "grade": "correct" | "partial" | "incorrect",
   "label": "short 2-4 word verdict",
   "message": "3-4 sentences: affirm what was captured, identify what was missing or imprecise, reinforce the key concept."
+}`;
+
+const MASTERY_SYSTEM = `You are an expert instructor writing an end-of-module mastery report for a student who has just completed Module 5 ("Composability & Pipelines") of a course on Agent-Readable Skills Infrastructure. The module covers: composability (a skill's output natively serves as the next skill's input without human intervention); the output-first design rule; placeholder fields that keep schemas consistent and prevent silent pipeline failures; and the Deterministic Script Rule (when to use a script instead of a skill).
+
+You will be given the student's per-question results (recall questions graded correct/partial/incorrect, and quiz questions marked correct/incorrect). Evaluate overall mastery of the module's material based on these results.
+
+Return ONLY a JSON object (no markdown fences, no prose outside the JSON):
+{
+  "mastery_level": "one short phrase: 'Strong mastery' | 'Solid, with gaps' | 'Developing' | 'Needs review'",
+  "summary": "2-3 sentences assessing the student's overall grasp of the module, grounded in their results",
+  "mastered": ["specific concepts the results show the student has mastered; [] if none"],
+  "needs_work": ["specific concepts that need more work and why, tied to where they struggled; [] if none"],
+  "recommendations": ["concrete, actionable next steps for further study (sections to revisit, what to practice, when to move on)"]
 }`;
 
 function shuffleOptions(options) { return [...options].sort(() => Math.random() - 0.5); }
@@ -248,12 +295,52 @@ const QUIZ_QUESTIONS = [
 ];
 
 function Spinner() { return <div className="spinner" />; }
+function FbList({ icon, title, items, color }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color, letterSpacing: ".04em", marginBottom: 4 }}>
+        {icon} {title}
+      </div>
+      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.55 }}>
+        {items.map((t, i) => <li key={i} style={{ marginBottom: 2 }}>{t}</li>)}
+      </ul>
+    </div>
+  );
+}
+
 function FeedbackBox({ result }) {
   if (!result) return null;
+  // API or parsing error — tell the student what actually went wrong.
+  if (result.error) {
+    return (
+      <div className="feedback-box incorrect">
+        <div className="feedback-label">Couldn't assess your answer</div>
+        <div>{result.message}</div>
+      </div>
+    );
+  }
+  // Model returned text but not the expected JSON shape — show it anyway.
+  if (result.raw) {
+    return (
+      <div className="feedback-box partial">
+        <div className="feedback-label">Feedback</div>
+        <div>{result.message}</div>
+      </div>
+    );
+  }
+  const hasDetail = (result.accurate?.length || result.inaccurate?.length || result.missing?.length);
   return (
-    <div className={`feedback-box ${result.grade}`}>
+    <div className={`feedback-box ${result.grade || "partial"}`}>
       <div className="feedback-label">{result.label}</div>
-      <div>{result.message}</div>
+      <FbList icon="✓" title="Accurate" items={result.accurate} color="#3A9E6E" />
+      <FbList icon="✗" title="Inaccurate" items={result.inaccurate} color="#C44040" />
+      <FbList icon="⚠" title="Not covered in your answer" items={result.missing} color="#D0A030" />
+      {result.explanation && (
+        <div style={{ marginTop: hasDetail ? 12 : 4, fontSize: 13.5, lineHeight: 1.6 }}>{result.explanation}</div>
+      )}
+      {/* Fallback for the older single-message shape (prediction/summary sections) */}
+      {!hasDetail && !result.explanation && result.message && <div>{result.message}</div>}
     </div>
   );
 }
@@ -553,14 +640,20 @@ function SectionRecall({ onNext, onScore }) {
     setLoading(prev => ({ ...prev, [id]: true }));
     const sys = RECALL_SYSTEM + `\n\nRubric: ${q.rubric}`;
     const res = await assessWithClaude(sys, `Question: ${q.prompt}\n\nAnswer: ${answers[id].trim()}`);
+    setLoading(prev => ({ ...prev, [id]: false }));
     setResults(prev => {
       const next = { ...prev, [id]: res };
-      if (Object.keys(next).length === RECALL_QUESTIONS.length) setAllDone(true);
+      // Only advance once every question has been assessed without error — errors stay retryable.
+      if (RECALL_QUESTIONS.every(qq => next[qq.id] && !next[qq.id].error)) setAllDone(true);
       return next;
     });
-    setLoading(prev => ({ ...prev, [id]: false }));
-    onScore(id, res.grade);
-    storageSet(`engagement:module${moduleN}:recall:${id}`, { grade: res.grade, timestamp: Date.now() });
+    if (res.grade) {
+      onScore(id, res.grade);
+      storageSet(`engagement:module${moduleN}:recall:${id}`, { grade: res.grade, timestamp: Date.now() });
+    } else if (res.raw) {
+      onScore(id, "partial"); // got feedback text but not a structured grade
+    }
+    // on API/network error: leave the question open so the student can retry
   };
 
   return (
@@ -572,8 +665,8 @@ function SectionRecall({ onNext, onScore }) {
         <div key={q.id} className="recall-box">
           <div className="recall-label">Question {q.id.toUpperCase()}</div>
           <div className="recall-prompt">{q.prompt}</div>
-          <textarea className="recall-input" value={answers[q.id]} onChange={e => setAnswers(prev => ({ ...prev, [q.id]: e.target.value }))} disabled={!!results[q.id]} placeholder="Write your answer here…" />
-          {!results[q.id] && (
+          <textarea className="recall-input" value={answers[q.id]} onChange={e => setAnswers(prev => ({ ...prev, [q.id]: e.target.value }))} disabled={!!results[q.id] && !results[q.id].error} placeholder="Write your answer here…" />
+          {(!results[q.id] || results[q.id].error) && (
             <button className={`btn btn-primary ${(!answers[q.id].trim() || loading[q.id]) ? "btn-disabled" : ""}`} style={{ marginTop: "10px" }} onClick={() => submit(q.id)} disabled={!answers[q.id].trim() || loading[q.id]}>
               {loading[q.id] ? "Assessing…" : "Submit"}
             </button>
@@ -602,7 +695,8 @@ function QuizQuestion({ q, onResult }) {
     setLoading(true);
     const sys = QUIZ_SYSTEM.replace("{{CORRECT_OR_NOT}}", correct ? "correct" : "incorrect");
     const res = await assessWithClaude(sys, `Question: ${q.text}\nCorrect: ${q.options.find(o => o.correct).text}\nSelected: ${shuffled.options[idx].text}\nHint: ${q.explanation}`);
-    setFeedback(res.message || q.explanation);
+    // On any API error, fall back to the built-in explanation so the quiz still works.
+    setFeedback((!res.error && res.message) ? res.message : q.explanation);
     setLoading(false);
     onResult(correct);
     storageSet(`engagement:module${moduleN}:quiz:${q.id}`, { correct, timestamp: Date.now() });
@@ -704,10 +798,28 @@ function SectionComplete({ recallScores, quizScores }) {
     : pct >= 55
     ? "Solid foundation with gaps. Review the placeholder field strategy and Deterministic Script Rule before advancing."
     : "Consider re-reading Module 5. Focus on what makes a pipeline composable and the output-first design rule.";
+
+  const [analysis, setAnalysis] = useState(null);
+  const [analysisLoading, setAnalysisLoading] = useState(true);
+
   useEffect(() => {
     storageSet(`engagement:module${moduleN}:complete`, { timestamp: Date.now(), score: pct });
     storageSet(`engagement:module${moduleN}:completed`, { timestamp: Date.now(), score: pct });
     storageSet(`engagement:module${moduleN}:sessions`, [{ completed: true, score: pct, startTime: Date.now() }]);
+
+    let cancelled = false;
+    (async () => {
+      const recallSummary = RECALL_QUESTIONS
+        .map((q, i) => `Recall ${i + 1} — "${q.prompt}": ${recallScores[q.id] || "not answered"}`)
+        .join("\n");
+      const quizSummary = QUIZ_QUESTIONS
+        .map((q, i) => `Quiz ${i + 1} — "${q.text}": ${quizScores[q.id] ? "correct" : "incorrect"}`)
+        .join("\n");
+      const msg = `MODULE 5 — Composability & Pipelines\n\nOVERALL SCORE: ${pct}%\n\nRECALL RESULTS:\n${recallSummary}\n\nQUIZ RESULTS:\n${quizSummary}`;
+      const res = await assessWithClaude(MASTERY_SYSTEM, msg, 1200);
+      if (!cancelled) { setAnalysis(res); setAnalysisLoading(false); }
+    })();
+    return () => { cancelled = true; };
   }, []);
   return (
     <div style={{ textAlign: "center", paddingTop: "32px" }}>
@@ -728,6 +840,51 @@ function SectionComplete({ recallScores, quizScores }) {
         <div className="score-item"><div className="score-item-n">{quizPoints}</div><div className="score-item-l">Quiz points</div></div>
         <div className="score-item"><div className="score-item-n" style={{ color: scoreColor }}>{pct}%</div><div className="score-item-l">Final score</div></div>
       </div>
+
+      {/* AI mastery analysis — evaluates all answers, assesses mastery, recommends next steps */}
+      {analysisLoading && (
+        <div className="feedback-box feedback-loading" style={{ maxWidth: "480px", margin: "28px auto 0", textAlign: "left" }}>
+          <Spinner /> <span>Analyzing your performance across the module…</span>
+        </div>
+      )}
+      {!analysisLoading && analysis && !analysis.error && !analysis.raw && (
+        <div style={{ maxWidth: "480px", margin: "28px auto 0", textAlign: "left" }}>
+          <div className="callout callout-tip">
+            <div className="callout-title">{analysis.mastery_level || "Mastery Assessment"}</div>
+            <p>{analysis.summary}</p>
+          </div>
+          {analysis.mastered?.length > 0 && (
+            <div style={{ marginTop: 20 }}>
+              <h3 style={{ color: G.green }}>✓ What you've mastered</h3>
+              <ul className="content-list">{analysis.mastered.map((t, i) => <li key={i}>{t}</li>)}</ul>
+            </div>
+          )}
+          {analysis.needs_work?.length > 0 && (
+            <div style={{ marginTop: 20 }}>
+              <h3 style={{ color: G.amber }}>⚠ What needs more work</h3>
+              <ul className="content-list">{analysis.needs_work.map((t, i) => <li key={i}>{t}</li>)}</ul>
+            </div>
+          )}
+          {analysis.recommendations?.length > 0 && (
+            <div style={{ marginTop: 20 }}>
+              <h3>→ Recommendations for further study</h3>
+              <ul className="content-list">{analysis.recommendations.map((t, i) => <li key={i}>{t}</li>)}</ul>
+            </div>
+          )}
+        </div>
+      )}
+      {!analysisLoading && analysis?.raw && (
+        <div className="callout callout-insight" style={{ maxWidth: "480px", margin: "28px auto 0", textAlign: "left" }}>
+          <div className="callout-title">Mastery Assessment</div>
+          <p>{analysis.message}</p>
+        </div>
+      )}
+      {!analysisLoading && analysis?.error && (
+        <div className="callout callout-warning" style={{ maxWidth: "480px", margin: "28px auto 0", textAlign: "left" }}>
+          <div className="callout-title">Live analysis unavailable</div>
+          <p>{analysis.message} The score-based recommendation above still applies.</p>
+        </div>
+      )}
     </div>
   );
 }
