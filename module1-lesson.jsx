@@ -1096,6 +1096,11 @@ function SectionComplete({ recallScores, quizScores }) {
 
   const color = pct >= 80 ? G.green : pct >= 55 ? G.amber : G.red;
 
+  useEffect(() => {
+    storageSet("engagement:module1:complete", { timestamp: Date.now(), score: pct });
+    storageSet("engagement:module1:completed", { timestamp: Date.now(), score: pct });
+  }, []);
+
   return (
     <div>
       <div className="sec-eyebrow">Module 1 Complete</div>

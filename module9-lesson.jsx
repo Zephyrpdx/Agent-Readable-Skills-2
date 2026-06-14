@@ -524,7 +524,11 @@ function SectionComplete({ recallScores, quizScores }) {
   const max = RECALL_QUESTIONS.length * 2 + QUIZ_QUESTIONS.length * 2;
   const pct = max > 0 ? Math.round(((rp + qp) / max) * 100) : 0;
   const sc = pct >= 80 ? G.green : pct >= 55 ? G.amber : G.red;
-  useEffect(() => { storageSet(`engagement:module${moduleN}:sessions`, [{ completed: true, score: pct, startTime: Date.now() }]); }, []);
+  useEffect(() => {
+    storageSet(`engagement:module${moduleN}:complete`, { timestamp: Date.now(), score: pct });
+    storageSet(`engagement:module${moduleN}:completed`, { timestamp: Date.now(), score: pct });
+    storageSet(`engagement:module${moduleN}:sessions`, [{ completed: true, score: pct, startTime: Date.now() }]);
+  }, []);
   return (
     <div style={{ textAlign: "center", paddingTop: "32px" }}>
       <div className="capstone-complete-banner">

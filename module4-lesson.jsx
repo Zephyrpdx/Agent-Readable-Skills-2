@@ -853,6 +853,8 @@ function SectionComplete({ recallScores, quizScores }) {
     : "Consider re-reading Module 4 before continuing. Focus on the recipe vs. API analogy and all four SLA contract blocks.";
 
   useEffect(() => {
+    storageSet(`engagement:module${moduleN}:complete`, { timestamp: Date.now(), score: pct });
+    storageSet(`engagement:module${moduleN}:completed`, { timestamp: Date.now(), score: pct });
     storageSet(`engagement:module${moduleN}:sessions`, [{ completed: true, score: pct, startTime: Date.now() }]);
   }, []);
 

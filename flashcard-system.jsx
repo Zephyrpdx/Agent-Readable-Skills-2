@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import FLASHCARD_CONTENT from './flashcard-content.json'
 
 const G = {
   navy:   "#0F1B2D", navyM:  "#162236", navyL:  "#1D2E45",
@@ -126,58 +127,15 @@ const css = `
 `;
 
 // ── Card data ────────────────────────────────────────────────────────────────
-const FC_CARDS = [
-  {
-    id: "fc-m1-01", module: 1, term: "skill.markdown",
-    def: "A structured markdown file in a dedicated directory providing a deterministic, version-controlled behavioral contract for an LLM to execute.",
-    note: "M1 · Core concept",
-  },
-  {
-    id: "fc-m1-02", module: 1, term: "Routing Description",
-    def: "The single-line frontmatter field an LLM gateway uses to match user intent to a skill. Must contain concrete trigger phrases and output shape.",
-    note: "M1 · Skill anatomy",
-  },
-  {
-    id: "fc-m1-03", module: 1, term: "Routing Failure",
-    def: "Occurs when the model fails to invoke a skill despite a matching query — typically caused by a vague or multi-line description.",
-    note: "M1 · Failure modes",
-  },
-  {
-    id: "fc-m1-04", module: 1, term: "Reasoning Framework",
-    def: "Declarative decision principles in the skill body that allow the model to generalize to unanticipated situations.",
-    note: "M1 · Skill anatomy",
-  },
-  {
-    id: "fc-m1-05", module: 1, term: "Deterministic Output Spec",
-    def: "An explicit schema defining exact output structure — columns, fields, row counts — that downstream agents can parse reliably.",
-    note: "M1 · Skill anatomy",
-  },
-  {
-    id: "fc-m1-06", module: 1, term: "Edge Case Documentation",
-    def: "Explicit instructions for constraint failure states replacing the model's default hallucinated behavior with defined policy.",
-    note: "M1 · Skill anatomy",
-  },
-  {
-    id: "fc-m1-07", module: 1, term: "Pattern-Matching Exemplar",
-    def: "Static example output stored in the skill directory providing few-shot performance anchoring.",
-    note: "M1 · Skill anatomy",
-  },
-  {
-    id: "fc-m1-08", module: 1, term: "Contextual Economy",
-    def: "The discipline of keeping skill files under 150 lines to prevent context window overrun in production gateways.",
-    note: "M1 · Constraints",
-  },
-  {
-    id: "fc-m1-09", module: 1, term: "150-Line Constraint",
-    def: "Maximum recommended skill file length, enforced to maintain context efficiency and design discipline.",
-    note: "M1 · Constraints",
-  },
-  {
-    id: "fc-m1-10", module: 1, term: "Brittle Prompt",
-    def: "A conversational, ad-hoc prompt lacking a deterministic contract — behaves inconsistently and cannot be reliably versioned or tested.",
-    note: "M1 · Core concept",
-  },
-];
+const FC_CARDS = FLASHCARD_CONTENT.modules.flatMap((mod) =>
+  mod.cards.map((card) => ({
+    ...card,
+    module: Number(mod.id.replace(/^m/, "")),
+    term: card.front,
+    def: card.back,
+    note: `${card.tier} · ${mod.title}`,
+  }))
+)
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const BOX_DAYS = { 1: 0, 2: 2, 3: 4, 4: 7, 5: 14 };
@@ -200,6 +158,13 @@ const sset = async (key, val) => {
 const daysSince = (ts) => ts ? (Date.now() - ts) / 86400000 : 999;
 const isDue     = (fc) => !fc || daysSince(fc.lastReviewed) >= (BOX_DAYS[fc.box || 1] ?? 0);
 const shuffle   = (arr) => [...arr].sort(() => Math.random() - 0.5);
+
+const isAdvancedUnlocked = (card, cardData) => {
+  if (card.tier !== 'Advanced') return true;
+  if (!card.paired_basic) return false;
+  const basicState = cardData[card.paired_basic];
+  return Boolean(basicState && basicState.box >= 4);
+}
 
 function nextDueIn(fc) {
   if (!fc) return 0;
@@ -268,6 +233,7 @@ function LeitnerBoxes({ cardData }) {
 export default function App() {
   const [phase,        setPhase]        = useState("loading");
   const [cardData,     setCardData]     = useState({});
+  const [moduleComplete, setModuleComplete] = useState({});
   const [sessionCards, setSessionCards] = useState([]);
   const [cardIdx,      setCardIdx]      = useState(0);
   const [revealed,     setRevealed]     = useState(false);
@@ -279,15 +245,32 @@ export default function App() {
   const loadCards = async () => {
     setPhase("loading");
     const data = {};
+    const completeMap = {};
+
+    for (let m = 1; m <= 9; m++) {
+      completeMap[m] = Boolean(
+        await sget(`engagement:module${m}:completed`) ||
+        await sget(`engagement:module${m}:complete`)
+      );
+    }
+
     for (const card of FC_CARDS) {
       const fc = await sget(K.flashcard(card.id));
       data[card.id] = fc || null;
     }
+
     setCardData(data);
+    setModuleComplete(completeMap);
     setPhase("home");
   };
 
-  const dueCards = FC_CARDS.filter(c => isDue(cardData[c.id]));
+  const availableCards = FC_CARDS.filter((card) => {
+    if (!moduleComplete[card.module]) return false;
+    if (card.tier === 'Advanced' && !isAdvancedUnlocked(card, cardData)) return false;
+    return true;
+  });
+
+  const dueCards = availableCards.filter(c => isDue(cardData[c.id]));
 
   const startSession = (cards) => {
     setSessionStart(Date.now());
@@ -402,16 +385,17 @@ export default function App() {
           )}
           <button
             className="btn btn-ghost"
-            onClick={() => startSession(FC_CARDS)}
+            onClick={() => startSession(availableCards)}
+            disabled={availableCards.length === 0}
           >
-            Review All 10 Cards
+            Review All {availableCards.length} Available
           </button>
         </div>
 
-        {FC_CARDS.some(c => cardData[c.id]) && (
+        {availableCards.length > 0 && (
           <div style={{ marginTop: 40 }}>
             <div className="sec-label">Card status</div>
-            {FC_CARDS.map(card => {
+            {availableCards.map(card => {
               const fc  = cardData[card.id];
               const box = fc?.box || 1;
               const due = isDue(fc);

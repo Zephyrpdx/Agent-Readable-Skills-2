@@ -513,7 +513,11 @@ function SectionComplete({ recallScores, quizScores }) {
   const rec = pct >= 80 ? "Excellent. One module remaining — advance to Module 9: Enterprise Deployment."
     : pct >= 55 ? "Review the scoring rubric design rules and version comparison protocol before the final module."
     : "Re-read Module 8 with focus on the transformer sensitivity problem and harness component design.";
-  useEffect(() => { storageSet(`engagement:module${moduleN}:sessions`, [{ completed: true, score: pct, startTime: Date.now() }]); }, []);
+  useEffect(() => {
+    storageSet(`engagement:module${moduleN}:complete`, { timestamp: Date.now(), score: pct });
+    storageSet(`engagement:module${moduleN}:completed`, { timestamp: Date.now(), score: pct });
+    storageSet(`engagement:module${moduleN}:sessions`, [{ completed: true, score: pct, startTime: Date.now() }]);
+  }, []);
   return (
     <div style={{ textAlign: "center", paddingTop: "32px" }}>
       <div className="sec-eyebrow" style={{ textAlign: "center" }}>Module Complete</div>

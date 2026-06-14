@@ -491,7 +491,11 @@ function SectionComplete({ recallScores, quizScores }) {
   const rec = pct >= 80 ? "Strong performance. Advance to Module 8: Quantitative Testing."
     : pct >= 55 ? "Review the Tier 2 authorship requirement and Tier 3 continuity risk sections before advancing."
     : "Re-read Module 7, focusing on the three tiers, their ownership structures, and the promotion process.";
-  useEffect(() => { storageSet(`engagement:module${moduleN}:sessions`, [{ completed: true, score: pct, startTime: Date.now() }]); }, []);
+  useEffect(() => {
+    storageSet(`engagement:module${moduleN}:complete`, { timestamp: Date.now(), score: pct });
+    storageSet(`engagement:module${moduleN}:completed`, { timestamp: Date.now(), score: pct });
+    storageSet(`engagement:module${moduleN}:sessions`, [{ completed: true, score: pct, startTime: Date.now() }]);
+  }, []);
   return (
     <div style={{ textAlign: "center", paddingTop: "32px" }}>
       <div className="sec-eyebrow" style={{ textAlign: "center" }}>Module Complete</div>

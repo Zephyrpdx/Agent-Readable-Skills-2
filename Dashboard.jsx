@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import FLASHCARD_CONTENT from './flashcard-content.json'
 
 const G = {
   navy: '#0F1B2D', navyM: '#162236', navyL: '#1D2E45',
@@ -7,6 +8,26 @@ const G = {
   cream: '#F5F0E8', creamD: '#E8E0D0',
   text: '#D8CFC0', textD: '#A09888',
   red: '#C44040', green: '#3A9E6E', white: '#FFFFFF',
+}
+
+const FC_CARDS = FLASHCARD_CONTENT.modules.flatMap((mod) =>
+  mod.cards.map((card) => ({ ...card, module: Number(mod.id.replace('m', '')) }))
+)
+
+const BOX_DAYS = { 1: 0, 2: 2, 3: 4, 4: 7, 5: 14 }
+
+const isDue = (cardData) => {
+  if (!cardData) return true
+  const box = cardData.box || 1
+  const interval = BOX_DAYS[box] || 0
+  return Date.now() - (cardData.lastReviewed || 0) >= interval * 86400000
+}
+
+const isAdvancedUnlocked = (card, cardData) => {
+  if (card.tier !== 'Advanced') return true
+  if (!card.paired_basic) return false
+  const basicState = cardData[card.paired_basic]
+  return Boolean(basicState && basicState.box >= 4)
 }
 
 const css = `
@@ -116,50 +137,69 @@ export default function Dashboard({ onNavigate, onSettings }) {
   const [moduleData, setModuleData] = useState({})
   const [leitnerCounts, setLeitnerCounts] = useState([0, 0, 0, 0, 0])
   const [cardsDueToday, setCardsDueToday] = useState(0)
+  const [totalCards, setTotalCards] = useState(0)
 
   useEffect(() => {
     const now = Date.now()
     const data = {}
     let totalDue = 0
+    let totalAvailableCards = 0
     const lboxes = [0, 0, 0, 0, 0]
+    const moduleComplete = {}
 
     for (let m = 1; m <= 9; m++) {
-      const key = `module${m}:complete`
+      const completedData = readStorage(`engagement:module${m}:completed`, null) || readStorage(`engagement:module${m}:complete`, null)
       const sessions = readStorage(`engagement:module${m}:sessions`, [])
-      const completions = sessions.filter(s => s.completed)
-      const bestScore = completions.reduce((best, s) => Math.max(best, s.score || 0), 0)
-      const lastSession = sessions.length > 0 ? sessions[sessions.length - 1] : null
+      const completions = Array.isArray(sessions) ? sessions.filter(s => s.completed) : []
+      const lastSession = completions.length > 0 ? completions[completions.length - 1] : null
+      const bestScore = Math.max(
+        completedData?.score || 0,
+        ...completions.map(s => s.score || 0),
+      )
+      const completedCount = completedData ? 1 : completions.length
+
+      moduleComplete[m] = Boolean(completedData || completedCount > 0)
 
       data[`m${m}`] = {
-        completionCount: completions.length,
+        completionCount,
         bestScore,
-        lastDate: lastSession ? new Date(lastSession.startTime).toLocaleDateString() : null,
-        inProgress: sessions.length > 0 && completions.length === 0,
+        lastDate: completedData?.timestamp
+          ? new Date(completedData.timestamp).toLocaleDateString()
+          : lastSession
+          ? new Date(lastSession.startTime || lastSession.end || Date.now()).toLocaleDateString()
+          : null,
+        inProgress: Array.isArray(sessions) && sessions.length > 0 && completions.length === 0,
       }
     }
 
-    // Leitner box counts
-    const flashcardState = readStorage('flashcards:state', {})
-    const leitnerIntervals = [0, 2, 4, 7, 14]
-
-    Object.entries(flashcardState).forEach(([cardId, cardData]) => {
-      const box = (cardData.box || 1) - 1
-      if (box >= 0 && box < 5) lboxes[box]++
-
-      const lastReview = cardData.lastReview || 0
-      const interval = leitnerIntervals[cardData.box - 1] || 0
-      const dueAt = lastReview + interval * 86400000
-      if (now >= dueAt) totalDue++
+    const cardData = {}
+    FC_CARDS.forEach((card) => {
+      cardData[card.id] = readStorage(`engagement:flashcard:${card.id}`, null)
     })
+
+    const availableCards = FC_CARDS.filter((card) => {
+      if (!moduleComplete[card.module]) return false
+      if (card.tier === 'Advanced' && !isAdvancedUnlocked(card, cardData)) return false
+      return true
+    })
+
+    availableCards.forEach((card) => {
+      const state = cardData[card.id]
+      const box = (state?.box || 1) - 1
+      if (box >= 0 && box < 5) lboxes[box]++
+      if (isDue(state)) totalDue++
+    })
+
+    totalAvailableCards = availableCards.length
 
     setModuleData(data)
     setLeitnerCounts(lboxes)
     setCardsDueToday(totalDue)
+    setTotalCards(totalAvailableCards)
   }, [])
 
   const completedCount = Object.values(moduleData).filter(d => d.completionCount > 0).length
   const inProgressCount = Object.values(moduleData).filter(d => d.inProgress).length
-  const totalCards = leitnerCounts.reduce((a, b) => a + b, 0)
 
   // Determine recommended next action
   const getRecommendation = () => {
@@ -243,7 +283,7 @@ export default function Dashboard({ onNavigate, onSettings }) {
           </div>
           <div className="stat-card">
             <div className="stat-n">{totalCards}</div>
-            <div className="stat-label">Total cards in deck</div>
+            <div className="stat-label">Unlocked cards</div>
           </div>
         </div>
 

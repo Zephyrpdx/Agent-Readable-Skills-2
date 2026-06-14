@@ -1081,6 +1081,7 @@ function SectionComplete({ recallScores, quizScores }) {
 
   useEffect(() => {
     storageSet("engagement:module3:complete", { timestamp: Date.now(), score: pct });
+    storageSet("engagement:module3:completed", { timestamp: Date.now(), score: pct });
   }, []);
 
   return (
@@ -1165,7 +1166,7 @@ export default function App() {
   const mainRef = useRef(null);
 
   useEffect(() => {
-    storageGet("engagement:module3:complete").then(data => {
+    storageGet("engagement:module3:completed").then(data => {
       if (data && data.timestamp) setReviewMode(true);
     });
   }, []);

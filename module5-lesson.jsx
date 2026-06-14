@@ -705,6 +705,8 @@ function SectionComplete({ recallScores, quizScores }) {
     ? "Solid foundation with gaps. Review the placeholder field strategy and Deterministic Script Rule before advancing."
     : "Consider re-reading Module 5. Focus on what makes a pipeline composable and the output-first design rule.";
   useEffect(() => {
+    storageSet(`engagement:module${moduleN}:complete`, { timestamp: Date.now(), score: pct });
+    storageSet(`engagement:module${moduleN}:completed`, { timestamp: Date.now(), score: pct });
     storageSet(`engagement:module${moduleN}:sessions`, [{ completed: true, score: pct, startTime: Date.now() }]);
   }, []);
   return (

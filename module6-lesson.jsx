@@ -508,7 +508,11 @@ function SectionComplete({ recallScores, quizScores }) {
   const rec = pct >= 80 ? "Excellent. You've completed Level 2 — advance to Module 7: Governance Tiers."
     : pct >= 55 ? "Review the 7-step debugging checklist and output drift section before advancing to Level 3."
     : "Re-read Module 6, focusing on failure taxonomy and how to distinguish routing vs. drift vs. pipeline failures.";
-  useEffect(() => { storageSet(`engagement:module${moduleN}:sessions`, [{ completed: true, score: pct, startTime: Date.now() }]); }, []);
+  useEffect(() => {
+    storageSet(`engagement:module${moduleN}:complete`, { timestamp: Date.now(), score: pct });
+    storageSet(`engagement:module${moduleN}:completed`, { timestamp: Date.now(), score: pct });
+    storageSet(`engagement:module${moduleN}:sessions`, [{ completed: true, score: pct, startTime: Date.now() }]);
+  }, []);
   return (
     <div style={{ textAlign: "center", paddingTop: "32px" }}>
       <div className="sec-eyebrow" style={{ textAlign: "center" }}>Module Complete</div>
