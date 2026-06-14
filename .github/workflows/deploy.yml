@@ -37,6 +37,9 @@ jobs:
           VITE_BASE_URL: /${{ github.event.repository.name }}/
 
       - uses: actions/configure-pages@v4
+        with:
+          # Turn Pages on (source: GitHub Actions) automatically on first run
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
