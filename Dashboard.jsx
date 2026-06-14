@@ -161,7 +161,7 @@ export default function Dashboard({ onNavigate, onSettings }) {
       moduleComplete[m] = Boolean(completedData || completedCount > 0)
 
       data[`m${m}`] = {
-        completionCount,
+        completionCount: completedCount,
         bestScore,
         lastDate: completedData?.timestamp
           ? new Date(completedData.timestamp).toLocaleDateString()
